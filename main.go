@@ -19,7 +19,7 @@ const (
 	confDirFileMode  os.FileMode = 0755
 )
 
-// Config ...
+// Config is the program config
 type Config struct {
 	Add    bool
 	Set    bool
@@ -28,7 +28,7 @@ type Config struct {
 	Ops    uint8
 }
 
-// Flags ...
+// Flags registers and parses the program flags
 func (c *Config) Flags() {
 	flag.BoolVar(&c.Add, "a", false, "Add kubeconfig to the library")
 	flag.BoolVar(&c.Set, "s", false, "Set current kubeconfig")
@@ -67,7 +67,7 @@ func (c *Config) Flags() {
 	}
 }
 
-// Args ...
+// Args returns the program argumets without the program name and flags
 func (c *Config) Args() []string {
 	if c.Ops == 0 {
 		return os.Args[1:]
@@ -75,7 +75,7 @@ func (c *Config) Args() []string {
 	return os.Args[2:]
 }
 
-// Validate ...
+// Validate checks the flags for conflicts
 func (c *Config) Validate() bool {
 	switch c.Ops {
 	case 0, 1, 2, 4, 8:
@@ -84,7 +84,7 @@ func (c *Config) Validate() bool {
 	return false
 }
 
-// Handler returns the handler function for the set operation
+// Handler returns the handler function for the operation specified by the flag
 func (c *Config) Handler() func(string, []string) error {
 	if c.Add {
 		return addKubeconfig
@@ -99,10 +99,12 @@ func (c *Config) Handler() func(string, []string) error {
 		return removeKubeconfig
 	}
 
-	return func(string, []string) error {
-		return nil
-	}
+	return func(string, []string) error { return nil }
 }
+
+/*************
+    Handlers
+**************/
 
 func addKubeconfig(configPath string, args []string) error {
 	if len(args) < 1 {
@@ -142,21 +144,6 @@ func addKubeconfig(configPath string, args []string) error {
 	fmt.Printf("%s -> %s added\n", slink, file)
 
 	return nil
-}
-
-func listSymDir(dir string) ([]fs.FileInfo, error) {
-	files, err := ioutil.ReadDir(dir)
-	if err != nil {
-		return nil, err
-	}
-
-	var res []fs.FileInfo
-	for _, file := range files {
-		if !file.IsDir() && (file.Mode()&fs.ModeSymlink == fs.ModeSymlink) {
-			res = append(res, file)
-		}
-	}
-	return res, nil
 }
 
 func listKubeconfigs(configPath string, args []string) error {
@@ -213,6 +200,7 @@ func removeKubeconfig(configPath string, args []string) error {
 	return makeKubeconfig(configPath, args, remove)
 }
 
+// configPath returns the full path to the config directory (creates it if doesn't exists)
 func configPath() (string, error) {
 	configPath := strings.TrimSpace(os.Getenv(confPathVar))
 	if len(configPath) == 0 {
@@ -230,16 +218,17 @@ func configPath() (string, error) {
 	return configPath, os.Mkdir(configPath, confDirFileMode)
 }
 
-func exists(path string) bool {
-	_, err := os.Stat(path)
-	return !os.IsNotExist(err)
-}
+/*************
+    Helpers
+**************/
 
+// ouput prints set KUBECONFIG variable
 func output(linkPath string) error {
 	fmt.Printf("export %s=%s\n", kubeConfigVar, linkPath)
 	return nil
 }
 
+// remove removes the link for the config directory
 func remove(linkPath string) error {
 	kubeConfigPath, err := os.Readlink(linkPath)
 	if err != nil {
@@ -252,6 +241,28 @@ func remove(linkPath string) error {
 
 	fmt.Printf("%s -> %s removed\n", path.Base(linkPath), kubeConfigPath)
 	return nil
+}
+
+// exists returns true of the given path exists
+func exists(path string) bool {
+	_, err := os.Stat(path)
+	return !os.IsNotExist(err)
+}
+
+// listSymDir returns a list of symlinks which the given directory contains
+func listSymDir(dir string) ([]fs.FileInfo, error) {
+	files, err := ioutil.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var res []fs.FileInfo
+	for _, file := range files {
+		if !file.IsDir() && (file.Mode()&fs.ModeSymlink == fs.ModeSymlink) {
+			res = append(res, file)
+		}
+	}
+	return res, nil
 }
 
 func main() {
@@ -270,7 +281,7 @@ func main() {
 	}
 
 	if err = cfg.Handler()(configPath, cfg.Args()); err != nil {
-		fmt.Println("error handling request:", err)
+		fmt.Println("error handling operation:", err)
 		os.Exit(1)
 	}
 }
